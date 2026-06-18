@@ -1,0 +1,82 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  frontend-lint:
+    name: Frontend Lint & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npx eslint src --ext .js,.jsx --max-warnings 0
+      - name: Build
+        run: npm run build
+
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: nirikshak_test
+          POSTGRES_USER: nirikshak
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      - name: Run tests
+        run: mvn -B test
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nirikshak_test
+          SPRING_DATASOURCE_USERNAME: nirikshak
+          SPRING_DATASOURCE_PASSWORD: testpassword
+          JWT_SECRET: test-secret-key-minimum-32-characters-long
+
+  python-test:
+    name: Python AI Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python-ai
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-test.txt
+      - name: Run tests
+        run: pytest tests/ -v
