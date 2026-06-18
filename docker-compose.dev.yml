@@ -1,0 +1,59 @@
+version: '3.9'
+
+# Docker Compose Override for Local Development
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# This override adds:
+#   - Hot-reload volumes for all services
+#   - Debug ports
+#   - Development environment variables
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: nirikshak_dev
+      POSTGRES_USER: nirikshak
+      POSTGRES_PASSWORD: devpassword
+
+  backend:
+    build:
+      context: ./backend
+      target: development
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nirikshak_dev
+      SPRING_DATASOURCE_USERNAME: nirikshak
+      SPRING_DATASOURCE_PASSWORD: devpassword
+      JWT_SECRET: dev-secret-key-minimum-32-characters-long-for-testing
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+      AI_VISION_SERVICE_URL: http://python-ai:8000
+    ports:
+      - "8080:8080"
+      - "5005:5005"   # JVM debug port
+    volumes:
+      - ./backend/src:/app/src
+
+  python-ai:
+    environment:
+      LOG_LEVEL: debug
+      RELOAD: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./python-ai:/app
+
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    command: npm start
+    environment:
+      REACT_APP_BACKEND_URL: http://localhost:8080
+      REACT_APP_WS_URL: ws://localhost:8080
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
