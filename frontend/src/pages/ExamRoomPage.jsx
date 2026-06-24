@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   AppBar, Toolbar, Box, Typography, IconButton, Tooltip,
-  Divider, Chip, Snackbar, Alert, Paper, LinearProgress,
+  Chip, Snackbar, Alert, Paper, LinearProgress,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button,
   CircularProgress, useMediaQuery, useTheme,
 } from '@mui/material';
@@ -17,6 +17,7 @@ import GazeIndicator  from '../components/GazeIndicator';
 import AlertFeed      from '../components/AlertFeed';
 import ExamTimer      from '../components/ExamTimer';
 import ViolationBadge from '../components/ViolationBadge';
+import AudioMonitor   from '../components/AudioMonitor';
 
 import { startExam, endExam, getQuestions, submitExam } from '../api';
 
@@ -106,7 +107,6 @@ export default function ExamRoomPage({ darkMode, onToggleDark }) {
   const wsRef         = useRef(null);
   const webcamRef     = useRef(null);
   const lastSentRef   = useRef(0); // Fix 2: WS frame throttle timestamp
-  const questionRefs  = useRef({});  // for scroll-to-question
   const student       = JSON.parse(localStorage.getItem('nirikshak_student') || '{}');
   const token         = localStorage.getItem('nirikshak_token');
 
@@ -283,6 +283,26 @@ export default function ExamRoomPage({ darkMode, onToggleDark }) {
       setSnackMsg(`⚠ ${result.alertType.replace(/_/g, ' ')}: ${result.description}`);
       setSnackOpen(true);
     }
+  }, []);
+
+  // ── Handle audio violations from AudioMonitor ───────────────────────────────
+  const handleAudioAlert = useCallback((result) => {
+    if (!result) return;
+    const audioAlert = {
+      ...result,
+      id:        Date.now(),
+      message:   result.description,
+      timestamp: Date.now(),
+      severity:  'HIGH',
+    };
+    setAlerts((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.alertType === 'AUDIO_DETECTED' && Date.now() - last.timestamp < 5000) return prev;
+      return [...prev, audioAlert];
+    });
+    setViolationCount((c) => c + 1);
+    setSnackMsg('⚠ AUDIO DETECTED: Sustained speech detected during exam.');
+    setSnackOpen(true);
   }, []);
 
   // ── Select an answer ───────────────────────────────────────────────────────
@@ -536,6 +556,36 @@ export default function ExamRoomPage({ darkMode, onToggleDark }) {
           />
 
           <GazeIndicator alertType={currentAlert} />
+
+          {/* Audio Monitor */}
+          <AudioMonitor onAudioAlert={handleAudioAlert} />
+
+          {/* Violation type badges */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.7 }}>
+            {[
+              { type: 'GAZE_AWAY',      label: 'Gaze',  icon: '👁', color: '#F59E0B' },
+              { type: 'MULTIPLE_FACES', label: 'Faces', icon: '👥', color: '#EF4444' },
+              { type: 'NO_FACE',        label: 'Face',  icon: '👤', color: '#EF4444' },
+              { type: 'AUDIO_DETECTED', label: 'Audio', icon: '🎤', color: '#A78BFA' },
+              { type: 'HEAD_TURN',      label: 'Head',  icon: '🔄', color: '#06B6D4' },
+            ].map(({ type, label, icon, color }) => {
+              const active = alerts.some(a => a.alertType === type);
+              return (
+                <Box key={type} sx={{
+                  display: 'flex', alignItems: 'center', gap: 0.4,
+                  px: 0.9, py: 0.3, borderRadius: '6px',
+                  bgcolor: active ? `${color}22` : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${active ? `${color}55` : 'rgba(255,255,255,0.06)'}`,
+                  transition: 'all 0.3s ease',
+                }}>
+                  <Typography sx={{ fontSize: '0.6rem' }}>{icon}</Typography>
+                  <Typography sx={{ fontSize: '0.58rem', fontWeight: 700, color: active ? color : 'rgba(255,255,255,0.25)', fontFamily: 'monospace', letterSpacing: '0.04em' }}>
+                    {label}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
 
           {/* Student info card */}
           <Box sx={{ mt: 'auto', p: 1.5, borderRadius: '12px', background: 'rgba(129,140,248,0.06)', border: '1px solid rgba(129,140,248,0.12)' }}>
