@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
-  Box, Typography, TextField, Button,
-  CircularProgress, Alert, Tab, Tabs, InputAdornment, IconButton,
+  Box, Typography, TextField, Button, ToggleButton, ToggleButtonGroup,
+  CircularProgress, Alert, Tab, Tabs, InputAdornment, IconButton, LinearProgress,
 } from '@mui/material';
 import LockIcon          from '@mui/icons-material/Lock';
 import EmailIcon         from '@mui/icons-material/Email';
@@ -10,8 +10,26 @@ import VisibilityIcon    from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import RocketLaunchIcon  from '@mui/icons-material/RocketLaunch';
 import ShieldIcon        from '@mui/icons-material/Shield';
+import SchoolIcon        from '@mui/icons-material/School';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import PhoneAndroidIcon  from '@mui/icons-material/PhoneAndroid';
 import { useNavigate }   from 'react-router-dom';
 import { login, register } from '../api';
+
+// ── Password strength helpers ──────────────────────────────────────────────────
+function getPasswordStrength(pwd) {
+  if (!pwd) return { score: 0, label: '', color: 'transparent' };
+  let score = 0;
+  if (pwd.length >= 8) score++;
+  if (pwd.length >= 12) score++;
+  if (/[A-Z]/.test(pwd)) score++;
+  if (/[0-9]/.test(pwd)) score++;
+  if (/[^A-Za-z0-9]/.test(pwd)) score++;
+  if (score <= 1) return { score: 20,  label: 'Weak',   color: '#EF4444' };
+  if (score <= 2) return { score: 45,  label: 'Fair',   color: '#F59E0B' };
+  if (score <= 3) return { score: 70,  label: 'Good',   color: '#10B981' };
+  return { score: 100, label: 'Strong', color: '#818CF8' };
+}
 
 // ── Animated floating orb ────────────────────────────────────────────────────
 function Orb({ size, top, left, color, delay = 0 }) {
@@ -84,13 +102,46 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [showPwd, setShowPwd] = useState(false);
+  const [role, setRole]       = useState('STUDENT');
   const [loginForm, setLoginForm]       = useState({ email: 'demo@nirikshak.ai', password: 'demo1234' });
   const [registerForm, setRegisterForm] = useState({ name: '', email: '', password: '' });
+
+  // OTP flow state
+  const [otpStep, setOtpStep]       = useState(false);   // true = show OTP input
+  const [otpValue, setOtpValue]     = useState('');
+  const [otpError, setOtpError]     = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const pendingDataRef = useRef(null); // store auth data until OTP verified
+
+  const pwdStrength = getPasswordStrength(registerForm.password);
 
   const handleDemoMode = () => {
     localStorage.setItem('nirikshak_token', 'demo-offline-token');
     localStorage.setItem('nirikshak_student', JSON.stringify({ id: 'demo-student-001', name: 'Demo Student', email: 'demo@nirikshak.ai' }));
-    navigate('/exam/demo-exam-001');
+    localStorage.setItem('nirikshak_role', role);
+    navigate('/dashboard');
+  };
+
+  // ── OTP verify ──────────────────────────────────────────────────────────────
+  const handleVerifyOtp = () => {
+    setOtpLoading(true);
+    setOtpError('');
+    // Simulate OTP validation (demo code: 123456)
+    setTimeout(() => {
+      if (otpValue === '123456') {
+        const d = pendingDataRef.current;
+        if (d) {
+          localStorage.setItem('nirikshak_token', d.token);
+          localStorage.setItem('nirikshak_student', JSON.stringify({ id: d.studentId, name: d.name, email: d.email }));
+          localStorage.setItem('nirikshak_role', role);
+        }
+        setOtpLoading(false);
+        navigate('/dashboard');
+      } else {
+        setOtpError('Invalid OTP. Use demo code: 123456');
+        setOtpLoading(false);
+      }
+    }, 900);
   };
 
   const handleLogin = async (e) => {
@@ -98,12 +149,14 @@ export default function LoginPage() {
     setLoading(true); setError('');
     try {
       const { data } = await login(loginForm);
-      localStorage.setItem('nirikshak_token', data.token);
-      localStorage.setItem('nirikshak_student', JSON.stringify({ id: data.studentId, name: data.name, email: data.email }));
-      navigate('/exam/demo-exam-001');
+      // Store pending auth data, show OTP step
+      pendingDataRef.current = data;
+      setLoading(false);
+      setOtpStep(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed — use Demo Mode to try without a backend.');
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   };
 
   const handleRegister = async (e) => {
@@ -111,12 +164,13 @@ export default function LoginPage() {
     setLoading(true); setError('');
     try {
       const { data } = await register(registerForm);
-      localStorage.setItem('nirikshak_token', data.token);
-      localStorage.setItem('nirikshak_student', JSON.stringify({ id: data.studentId, name: data.name, email: data.email }));
-      navigate('/exam/demo-exam-001');
+      pendingDataRef.current = data;
+      setLoading(false);
+      setOtpStep(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed.');
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   };
 
   return (
@@ -247,6 +301,58 @@ export default function LoginPage() {
             <Box sx={{ height: 3, background: 'linear-gradient(90deg, #6366F1, #7C3AED, #A78BFA)' }} />
 
             <Box sx={{ p: { xs: 3, sm: 4 } }}>
+
+              {/* ── OTP STEP ─────────────────────────────────────────── */}
+              {otpStep ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                  <Box sx={{ textAlign: 'center', mb: 1 }}>
+                    <Box sx={{ width: 52, height: 52, borderRadius: '14px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(129,140,248,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 1.5 }}>
+                      <PhoneAndroidIcon sx={{ fontSize: 24, color: '#818CF8' }} />
+                    </Box>
+                    <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: '#E8E7FF' }}>Verify Identity</Typography>
+                    <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)', mt: 0.5 }}>Enter the 6-digit OTP sent to your device</Typography>
+                  </Box>
+
+                  {otpError && (
+                    <Alert severity="error" sx={{ borderRadius: '10px', bgcolor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#FCA5A5', fontSize: '0.82rem', '& .MuiAlert-icon': { color: '#F87171' } }}>
+                      {otpError}
+                    </Alert>
+                  )}
+
+                  <TextField
+                    id="otp-input"
+                    label="OTP Code"
+                    value={otpValue}
+                    onChange={e => setOtpValue(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="123456"
+                    fullWidth
+                    inputProps={{ maxLength: 6, style: { letterSpacing: '0.5em', fontSize: '1.4rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 } }}
+                    sx={{ ...inputSx }}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><PhoneAndroidIcon /></InputAdornment> }}
+                  />
+
+                  <Button
+                    id="btn-verify-otp"
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    disabled={otpValue.length !== 6 || otpLoading}
+                    onClick={handleVerifyOtp}
+                    sx={{ py: 1.5, fontSize: '0.95rem', borderRadius: '12px' }}
+                  >
+                    {otpLoading ? <CircularProgress size={20} color="inherit" /> : 'Verify & Enter →'}
+                  </Button>
+
+                  <Button variant="text" onClick={() => { setOtpStep(false); setOtpValue(''); setOtpError(''); }} sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem' }}>
+                    ← Back
+                  </Button>
+
+                  <Typography sx={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: '0.65rem' }}>
+                    Demo OTP: <Box component="span" sx={{ color: '#818CF8', fontFamily: 'monospace', fontWeight: 700 }}>123456</Box>
+                  </Typography>
+                </Box>
+              ) : (
+              <>
               {/* Tabs */}
               <Tabs
                 value={tab}
@@ -320,6 +426,40 @@ export default function LoginPage() {
               {/* Register Form */}
               {tab === 1 && (
                 <Box component="form" onSubmit={handleRegister} sx={{ display: 'flex', flexDirection: 'column', gap: 2.2 }}>
+                  {/* Role selector */}
+                  <Box>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', mb: 0.8, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Register as</Typography>
+                    <ToggleButtonGroup
+                      value={role} exclusive
+                      onChange={(_, v) => v && setRole(v)}
+                      fullWidth size="small"
+                      sx={{
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        borderRadius: '10px',
+                        '& .MuiToggleButton-root': {
+                          color: 'rgba(255,255,255,0.35)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          fontFamily: '"Outfit", sans-serif',
+                          fontWeight: 700, fontSize: '0.78rem',
+                          py: 0.8, borderRadius: '10px !important',
+                          transition: 'all 0.2s',
+                        },
+                        '& .Mui-selected': {
+                          bgcolor: 'rgba(99,102,241,0.3) !important',
+                          color: '#A5B4FC !important',
+                          borderColor: 'rgba(129,140,248,0.4) !important',
+                        },
+                      }}
+                    >
+                      <ToggleButton value="STUDENT" id="role-student">
+                        <SchoolIcon sx={{ fontSize: 15, mr: 0.7 }} /> Student
+                      </ToggleButton>
+                      <ToggleButton value="PROCTOR" id="role-proctor">
+                        <AdminPanelSettingsIcon sx={{ fontSize: 15, mr: 0.7 }} /> Proctor
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  </Box>
+
                   <TextField id="reg-name" label="Full Name" value={registerForm.name}
                     onChange={e => setRegisterForm(f => ({ ...f, name: e.target.value }))}
                     required fullWidth sx={inputSx}
@@ -330,22 +470,42 @@ export default function LoginPage() {
                     required fullWidth sx={inputSx}
                     InputProps={{ startAdornment: <InputAdornment position="start"><EmailIcon /></InputAdornment> }}
                   />
-                  <TextField id="reg-password" label="Password"
-                    type={showPwd ? 'text' : 'password'}
-                    value={registerForm.password}
-                    onChange={e => setRegisterForm(f => ({ ...f, password: e.target.value }))}
-                    required fullWidth sx={inputSx}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start"><LockIcon /></InputAdornment>,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton onClick={() => setShowPwd(p => !p)} edge="end" sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: '#818CF8' } }}>
-                            {showPwd ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
+                  <Box>
+                    <TextField id="reg-password" label="Password"
+                      type={showPwd ? 'text' : 'password'}
+                      value={registerForm.password}
+                      onChange={e => setRegisterForm(f => ({ ...f, password: e.target.value }))}
+                      required fullWidth sx={inputSx}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start"><LockIcon /></InputAdornment>,
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton onClick={() => setShowPwd(p => !p)} edge="end" sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: '#818CF8' } }}>
+                              {showPwd ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    {/* Password strength meter */}
+                    {registerForm.password && (
+                      <Box sx={{ mt: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+                          <Typography sx={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>Password strength</Typography>
+                          <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, color: pwdStrength.color, transition: 'color 0.3s' }}>{pwdStrength.label}</Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={pwdStrength.score}
+                          sx={{
+                            height: 4, borderRadius: 99,
+                            bgcolor: 'rgba(255,255,255,0.06)',
+                            '& .MuiLinearProgress-bar': { borderRadius: 99, bgcolor: pwdStrength.color, transition: 'width 0.4s ease, background-color 0.4s ease' },
+                          }}
+                        />
+                      </Box>
+                    )}
+                  </Box>
                   <Button id="btn-register" type="submit" variant="contained" size="large" fullWidth
                     disabled={loading}
                     sx={{ mt: 0.5, py: 1.5, fontSize: '0.95rem', borderRadius: '12px' }}
@@ -401,6 +561,8 @@ export default function LoginPage() {
                   </Typography>
                 ))}
               </Box>
+              </>
+              )} {/* end OTP ternary */}
             </Box>
           </Box>
         </Box>
