@@ -12,6 +12,10 @@ import PersonOffIcon          from '@mui/icons-material/PersonOff';
 import GroupsIcon             from '@mui/icons-material/Groups';
 import VisibilityOffIcon      from '@mui/icons-material/VisibilityOff';
 import HomeIcon               from '@mui/icons-material/Home';
+import PrintIcon              from '@mui/icons-material/Print';
+import ShareIcon              from '@mui/icons-material/Share';
+import MicIcon                from '@mui/icons-material/Mic';
+import ScreenRotationIcon     from '@mui/icons-material/ScreenRotation';
 
 import { getViolationReport } from '../api';
 import { formatIST, formatDuration } from '../utils/timeUtils';
@@ -88,11 +92,93 @@ const SEV_STYLES = {
 };
 
 const ALERT_META = {
-  GAZE_AWAY:      { label: 'Gaze Away',     icon: <VisibilityOffIcon      sx={{ fontSize: 14 }} />, color: '#F59E0B' },
+  GAZE_AWAY:      { label: 'Gaze Away',      icon: <VisibilityOffIcon      sx={{ fontSize: 14 }} />, color: '#F59E0B' },
   MULTIPLE_FACES: { label: 'Multiple Faces', icon: <GroupsIcon             sx={{ fontSize: 14 }} />, color: '#EF4444' },
   NO_FACE:        { label: 'No Face',        icon: <PersonOffIcon          sx={{ fontSize: 14 }} />, color: '#EF4444' },
+  AUDIO_DETECTED: { label: 'Audio Detected', icon: <MicIcon                sx={{ fontSize: 14 }} />, color: '#A78BFA' },
+  HEAD_TURN:      { label: 'Head Turn',      icon: <ScreenRotationIcon     sx={{ fontSize: 14 }} />, color: '#06B6D4' },
   CLEAR:          { label: 'Clear',          icon: <CheckCircleOutlineIcon sx={{ fontSize: 14 }} />, color: '#10B981' },
 };
+
+// ── Donut chart: violation breakdown ────────────────────────────────────────────────
+
+function ViolationDonut({ report }) {
+  const theme  = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+
+  const segments = [
+    { label: 'Gaze Away',      value: report.gazeAwayCount || 0,      color: '#F59E0B' },
+    { label: 'Multiple Faces', value: report.multipleFacesCount || 0, color: '#EF4444' },
+    { label: 'No Face',        value: report.noFaceCount || 0,        color: '#818CF8' },
+    { label: 'Audio',          value: report.audioCount || 0,         color: '#A78BFA' },
+    { label: 'Head Turn',      value: report.headTurnCount || 0,      color: '#06B6D4' },
+  ].filter(s => s.value > 0);
+
+  const total = segments.reduce((s, x) => s + x.value, 0);
+  if (total === 0) return null;
+
+  const R = 52, cx = 70, cy = 70;
+  const circ = 2 * Math.PI * R;
+  let offset = 0;
+
+  return (
+    <Box sx={{
+      p: 2.5, borderRadius: '16px',
+      background: isDark ? 'rgba(15,14,26,0.8)' : 'rgba(255,255,255,0.9)',
+      backdropFilter: 'blur(16px)',
+      border: isDark ? '1px solid rgba(129,140,248,0.12)' : '1px solid rgba(99,102,241,0.12)',
+      boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.4)' : '0 4px 20px rgba(99,102,241,0.08)',
+    }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <Box sx={{ width: 3, height: 14, bgcolor: 'primary.main', borderRadius: 99 }} />
+        <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Violation Breakdown</Typography>
+      </Box>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+        {/* SVG donut */}
+        <Box sx={{ position: 'relative', flexShrink: 0 }}>
+          <svg width="140" height="140" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx={cx} cy={cy} r={R} fill="none" stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} strokeWidth="14" />
+            {segments.map((seg, i) => {
+              const pct  = (seg.value / total) * circ;
+              const dash = `${pct} ${circ - pct}`;
+              const el   = (
+                <circle
+                  key={i}
+                  cx={cx} cy={cy} r={R}
+                  fill="none"
+                  stroke={seg.color}
+                  strokeWidth="14"
+                  strokeDasharray={dash}
+                  strokeDashoffset={-offset}
+                  strokeLinecap="round"
+                  style={{ transition: 'stroke-dashoffset 1s ease', filter: `drop-shadow(0 0 4px ${seg.color}88)` }}
+                />
+              );
+              offset += pct;
+              return el;
+            })}
+          </svg>
+          <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography sx={{ fontWeight: 900, fontSize: '1.6rem', color: 'text.primary', lineHeight: 1 }}>{total}</Typography>
+            <Typography sx={{ fontSize: '0.6rem', color: 'text.secondary', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>total</Typography>
+          </Box>
+        </Box>
+
+        {/* Legend */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {segments.map(seg => (
+            <Box key={seg.label} sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+              <Box sx={{ width: 10, height: 10, borderRadius: '3px', bgcolor: seg.color, flexShrink: 0, boxShadow: `0 0 6px ${seg.color}66` }} />
+              <Typography sx={{ flex: 1, fontSize: '0.75rem', color: 'text.secondary', fontWeight: 500 }}>{seg.label}</Typography>
+              <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color: seg.color }}>{seg.value}</Typography>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -192,15 +278,40 @@ export default function ResultsPage() {
             Session: {sessionId}
           </Typography>
         </Box>
-        <Button
-          id="btn-back-login"
-          variant="outlined"
-          startIcon={<HomeIcon />}
-          onClick={() => navigate('/login')}
-          sx={{ borderRadius: '12px', fontWeight: 600, mt: { xs: 1, md: 0 } }}
-        >
-          New Exam
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mt: { xs: 1, md: 0 } }}>
+          <Button
+            id="btn-print-report"
+            variant="outlined"
+            startIcon={<PrintIcon />}
+            onClick={() => window.print()}
+            sx={{ borderRadius: '12px', fontWeight: 600, borderColor: 'rgba(129,140,248,0.3)', color: '#A5B4FC',
+              '&:hover': { borderColor: '#818CF8', bgcolor: 'rgba(129,140,248,0.08)' } }}
+          >
+            Print
+          </Button>
+          <Button
+            id="btn-share-report"
+            variant="outlined"
+            startIcon={<ShareIcon />}
+            onClick={() => {
+              const text = `Nirikshak AI Exam Report\nSession: ${sessionId}\nStudent: ${report.studentName}\nViolations: ${report.totalViolations}\nIntegrity: ${Math.max(0, Math.round(100 - report.totalViolations * 5))}/100`;
+              navigator.clipboard.writeText(text).then(() => alert('Report copied to clipboard!'));
+            }}
+            sx={{ borderRadius: '12px', fontWeight: 600, borderColor: 'rgba(16,185,129,0.3)', color: '#34D399',
+              '&:hover': { borderColor: '#10B981', bgcolor: 'rgba(16,185,129,0.08)' } }}
+          >
+            Share
+          </Button>
+          <Button
+            id="btn-back-login"
+            variant="outlined"
+            startIcon={<HomeIcon />}
+            onClick={() => navigate('/login')}
+            sx={{ borderRadius: '12px', fontWeight: 600, mt: { xs: 1, md: 0 } }}
+          >
+            New Exam
+          </Button>
+        </Box>
       </Box>
 
       {/* ── MAIN GRID — integrity ring + stat cards ──────────────────────── */}
@@ -257,6 +368,9 @@ export default function ResultsPage() {
           <StatCard icon={<PersonOffIcon />}     label="No Face"        value={report.noFaceCount}        color="#EF4444" sublabel="Student absent"        />
         </Box>
       </Box>
+
+      {/* Violation breakdown donut */}
+      <ViolationDonut report={report} />
 
       {/* ── VIOLATION TIMELINE ───────────────────────────────────────────────── */}
       <Box sx={{
