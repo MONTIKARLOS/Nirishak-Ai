@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, Box } from '@mui/material';
 import { lightTheme, darkTheme } from './theme';
 
-import LoginPage    from './pages/LoginPage';
-import ExamRoomPage from './pages/ExamRoomPage';
-import ResultsPage  from './pages/ResultsPage';
+import LoginPage     from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import ExamRoomPage  from './pages/ExamRoomPage';
+import ResultsPage   from './pages/ResultsPage';
+import SessionGuard  from './components/SessionGuard';
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem('nirikshak_token');
   if (!token) return <Navigate to="/login" replace />;
-  return children;
+  return <SessionGuard>{children}</SessionGuard>;
 }
 
 /**
@@ -50,6 +52,16 @@ export default function App() {
           <Route path="/login" element={
             <PageTransition><LoginPage /></PageTransition>
           } />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <DashboardPage />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/exam/:id"
             element={
