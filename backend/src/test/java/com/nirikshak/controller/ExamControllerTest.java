@@ -3,6 +3,10 @@ package com.nirikshak.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nirikshak.model.ExamSession;
 import com.nirikshak.service.ExamSessionService;
+import com.nirikshak.service.QuestionService;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,15 +15,20 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -32,6 +41,7 @@ class ExamControllerTest {
     @Autowired ObjectMapper objectMapper;
 
     @MockBean ExamSessionService              sessionService;
+    @MockBean QuestionService                  questionService;
     @MockBean com.nirikshak.security.JwtUtil  jwtUtil;
     @MockBean com.nirikshak.security.JwtFilter jwtFilter;
 
@@ -41,7 +51,17 @@ class ExamControllerTest {
     private ExamSession activeSession;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
+        // Make the mocked JwtFilter behave as a transparent pass-through so
+        // requests actually reach the DispatcherServlet / controller.
+        doAnswer(inv -> {
+            HttpServletRequest  req   = inv.getArgument(0);
+            HttpServletResponse res   = inv.getArgument(1);
+            FilterChain         chain = inv.getArgument(2);
+            chain.doFilter(req, res);
+            return null;
+        }).when(jwtFilter).doFilter(any(), any(), any());
+
         activeSession = ExamSession.builder()
             .id(SESSION_ID)
             .studentId(STUDENT_ID)
@@ -92,12 +112,19 @@ class ExamControllerTest {
 
     @Test
     @DisplayName("POST /api/exam/start creates and returns new session")
-    @WithMockUser(username = "student@nirikshak.ai", roles = "STUDENT")
     void startExam_validRequest_returns200() throws Exception {
         when(sessionService.createSession(any(UUID.class), anyString()))
             .thenReturn(activeSession);
 
+        // Build an auth token that has studentId set as details — same as JwtFilter produces
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+            "student@nirikshak.ai", null,
+            List.of(new SimpleGrantedAuthority("ROLE_STUDENT"))
+        );
+        auth.setDetails(STUDENT_ID.toString());
+
         mockMvc.perform(post("/api/exam/start")
+                .with(authentication(auth))
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("examId", "EXAM-001"))))
@@ -108,7 +135,6 @@ class ExamControllerTest {
 
     @Test
     @DisplayName("POST /api/exam/start uses GENERAL as default examId when body is empty")
-    @WithMockUser(username = "student@nirikshak.ai", roles = "STUDENT")
     void startExam_emptyBody_usesDefaultExamId() throws Exception {
         ExamSession generalSession = ExamSession.builder()
             .id(SESSION_ID)
@@ -122,7 +148,14 @@ class ExamControllerTest {
         when(sessionService.createSession(any(UUID.class), eq("GENERAL")))
             .thenReturn(generalSession);
 
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+            "student@nirikshak.ai", null,
+            List.of(new SimpleGrantedAuthority("ROLE_STUDENT"))
+        );
+        auth.setDetails(STUDENT_ID.toString());
+
         mockMvc.perform(post("/api/exam/start")
+                .with(authentication(auth))
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))

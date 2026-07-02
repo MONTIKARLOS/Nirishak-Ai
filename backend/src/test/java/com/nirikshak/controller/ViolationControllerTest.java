@@ -4,9 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nirikshak.dto.ViolationReport;
 import com.nirikshak.model.Violation;
 import com.nirikshak.service.ViolationService;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.invocation.InvocationOnMock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -18,6 +22,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -38,7 +44,17 @@ class ViolationControllerTest {
     private ViolationReport sampleReport;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
+        // Make the mocked JwtFilter behave as a transparent pass-through so
+        // requests actually reach the DispatcherServlet / controller.
+        doAnswer((InvocationOnMock inv) -> {
+            HttpServletRequest  req   = inv.getArgument(0);
+            HttpServletResponse res   = inv.getArgument(1);
+            FilterChain         chain = inv.getArgument(2);
+            chain.doFilter(req, res);
+            return null;
+        }).when(jwtFilter).doFilter(any(), any(), any());
+
         Violation v1 = Violation.builder()
             .id(UUID.randomUUID())
             .sessionId(SESSION_ID)

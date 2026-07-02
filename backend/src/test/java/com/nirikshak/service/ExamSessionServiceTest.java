@@ -96,16 +96,10 @@ class ExamSessionServiceTest {
     @Test
     @DisplayName("incrementViolationCount increments and saves")
     void incrementViolationCount_incrementsAndSaves() {
-        ExamSession session = ExamSession.builder()
-            .id(sessionId).studentId(studentId).examId("EX")
-            .startTime(LocalDateTime.now()).status("ACTIVE").totalViolations(4).build();
-
-        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
-        when(sessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
         sessionService.incrementViolationCount(sessionId);
 
-        assertThat(session.getTotalViolations()).isEqualTo(5);
-        verify(sessionRepository).save(session);
+        // Service delegates to a single atomic DB UPDATE; the in-memory object is NOT mutated.
+        // Verify the repository increment method was called with the correct session ID.
+        verify(sessionRepository).incrementViolations(sessionId);
     }
 }

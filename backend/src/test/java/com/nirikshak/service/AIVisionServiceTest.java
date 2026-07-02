@@ -38,8 +38,9 @@ class AIVisionServiceTest {
             .baseUrl(mockServer.url("/").toString())
             .build();
 
-        // 50ms timeout so timeout tests complete quickly
-        aiVisionService = new AIVisionService(webClient, 50);
+        // 5000ms timeout — generous enough that scheduling latency on boundedElastic
+        // never triggers a false CLEAR response on fast mock responses.
+        aiVisionService = new AIVisionService(webClient, 5000);
     }
 
     @AfterEach
@@ -78,14 +79,20 @@ class AIVisionServiceTest {
     // ── 2. Timeout — onErrorResume returns CLEAR ──────────────────────────────
 
     @Test
-    @DisplayName("analyzeFrame returns CLEAR on timeout (no response enqueued)")
+    @DisplayName("analyzeFrame returns CLEAR on timeout (response delayed beyond timeout)")
     void analyzeFrame_returnsClearOnTimeout() {
-        // No response enqueued — server will accept connection but not respond,
-        // triggering the 50ms timeout
-        mockServer.enqueue(new MockResponse().setBodyDelay(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        // Delay the response by 600ms, but this test instance has a 200ms timeout
+        mockServer.enqueue(new MockResponse()
+            .setBodyDelay(600, java.util.concurrent.TimeUnit.MILLISECONDS)
             .setResponseCode(200).setBody("{}"));
 
-        StepVerifier.create(aiVisionService.analyzeFrame("base64data"))
+        // Construct a short-timeout service for this specific test
+        WebClient shortTimeoutClient = WebClient.builder()
+            .baseUrl(mockServer.url("/").toString())
+            .build();
+        AIVisionService shortTimeoutService = new AIVisionService(shortTimeoutClient, 200);
+
+        StepVerifier.create(shortTimeoutService.analyzeFrame("base64data"))
             .assertNext(alert -> {
                 assertThat(alert.getAlertType()).isEqualTo("CLEAR");
                 assertThat(alert.getConfidence()).isEqualTo(0.0f);
