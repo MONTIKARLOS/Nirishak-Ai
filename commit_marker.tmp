@@ -1,3 +1,3 @@
-# Nirikshak AI - Commit 66
-# refactor: decouple exam repository from business logic
+# Nirikshak AI - Commit 67
+# refactor: extract face analysis pipeline to utility class
 # Generated: 
