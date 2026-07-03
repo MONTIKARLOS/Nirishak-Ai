@@ -1,3 +1,3 @@
-# Nirikshak AI - Commit 35
-# fix: resolve timer drift on slow client machines
+# Nirikshak AI - Commit 36
+# fix: correct gaze coordinate mapping on HiDPI screens
 # Generated: 
