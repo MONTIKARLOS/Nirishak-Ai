@@ -1,3 +1,3 @@
-# Nirikshak AI - Commit 149
-# perf: add connection pooling for database layer
+# Nirikshak AI - Commit 150
+# perf: compress video frames before WebSocket send
 # Generated: 
